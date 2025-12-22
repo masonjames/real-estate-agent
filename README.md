@@ -1,36 +1,157 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PropertyMatch - Real Estate Demographic Research Agent
+
+AI-powered property research platform that matches potential buyers to properties using demographic data analysis via Exa's people search API.
+
+## Features
+
+- **Property Research**: Lookup property details from Manatee County PAO (with planned Zillow/Realtor.com integration)
+- **Demographic Insights**: AI-powered analysis of area demographics, income levels, and lifestyle indicators
+- **Buyer Matching**: Identify ideal buyer personas and find real potential buyers
+- **Authentication**: Google OAuth and email/password authentication via Better-Auth
+- **Search History**: Save and review past property research
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Database**: Neon Postgres with Drizzle ORM
+- **Authentication**: Better-Auth
+- **AI/Search**: Exa API for demographic research and people search
+- **Styling**: Tailwind CSS
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 18+
+- A Neon database (https://neon.tech)
+- Exa API key (https://exa.ai)
+- Google OAuth credentials (for Google sign-in)
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <repo-url>
+cd real-estate-agent
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Copy the environment example and configure:
+```bash
+cp .env.example .env
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Configure your `.env` file:
+```env
+# Database
+DATABASE_URL=postgresql://user:password@host/database?sslmode=require
 
-## Learn More
+# Authentication
+BETTER_AUTH_SECRET=<generate-a-secret-key>
+BETTER_AUTH_URL=http://localhost:3000
 
-To learn more about Next.js, take a look at the following resources:
+# Google OAuth
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Exa API
+EXA_API_KEY=<your-exa-api-key>
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Anthropic API (optional, for future Claude Agent SDK features)
+ANTHROPIC_API_KEY=<your-anthropic-api-key>
+```
 
-## Deploy on Vercel
+5. Push the database schema:
+```bash
+npm run db:push
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+6. Start the development server:
+```bash
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+7. Open http://localhost:3000
+
+## Database Commands
+
+```bash
+npm run db:generate  # Generate migrations
+npm run db:migrate   # Run migrations
+npm run db:push      # Push schema to database (dev)
+npm run db:studio    # Open Drizzle Studio
+```
+
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── api/               # API routes
+│   │   ├── auth/          # Better-Auth handler
+│   │   └── research/      # Property research endpoint
+│   ├── auth/              # Authentication page
+│   ├── dashboard/         # Main dashboard
+│   └── history/           # Search history
+├── components/            # React components
+│   ├── auth/              # Auth-related components
+│   ├── layout/            # Layout components
+│   ├── search/            # Search & results components
+│   └── ui/                # Reusable UI components
+├── db/                    # Database schema & connection
+├── lib/                   # Core libraries
+│   ├── agent.ts           # Research agent orchestration
+│   ├── auth.ts            # Better-Auth server config
+│   ├── auth-client.ts     # Better-Auth client
+│   ├── exa.ts             # Exa API integration
+│   └── property-search.ts # Property data sources
+```
+
+## API Endpoints
+
+### POST /api/research
+Research a property by address. Requires authentication.
+
+**Request:**
+```json
+{
+  "address": "123 Main St, Bradenton, FL 34201"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "searchId": 1,
+  "result": {
+    "property": { ... },
+    "demographics": { ... },
+    "potentialBuyers": [ ... ],
+    "buyerPersonas": { ... },
+    "summary": "...",
+    "recommendations": [ ... ]
+  }
+}
+```
+
+### GET /api/research
+Get search history. Requires authentication.
+
+## Roadmap
+
+- [ ] Zillow API integration
+- [ ] Realtor.com API integration
+- [ ] Enhanced Manatee PAO scraping (currently uses mock data)
+- [ ] Claude Agent SDK for advanced property analysis
+- [ ] Export research reports as PDF
+- [ ] Team collaboration features
+- [ ] Saved property alerts
+
+## License
+
+MIT
