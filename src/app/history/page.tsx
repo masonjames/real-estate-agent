@@ -6,6 +6,8 @@ import { useSession } from "@/lib/auth-client";
 import { Header } from "@/components/layout/header";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FileText, MapPin, Users, Clock } from "lucide-react";
 
 interface PropertySearch {
   id: number;
@@ -56,10 +58,13 @@ export default function HistoryPage() {
 
   if (isPending || isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent" />
+            <p className="text-muted-foreground">Loading history...</p>
+          </div>
         </div>
       </div>
     );
@@ -70,13 +75,13 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Header />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Search History</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-3xl font-bold text-foreground">Search History</h1>
+            <p className="text-muted-foreground mt-2">
               View and manage your property research history.
             </p>
           </div>
@@ -88,23 +93,13 @@ export default function HistoryPage() {
         {searches.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
-              <svg
-                className="w-16 h-16 text-gray-300 mx-auto mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="w-16 h-16 mx-auto mb-4 bg-muted/50 rounded-full flex items-center justify-center">
+                <FileText className="w-8 h-8 text-muted-foreground/50" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-2">
                 No searches yet
               </h3>
-              <p className="text-gray-600 mb-6">
+              <p className="text-muted-foreground mb-6">
                 Start researching properties to build your history.
               </p>
               <Button onClick={() => router.push("/dashboard")}>
@@ -119,22 +114,30 @@ export default function HistoryPage() {
               {searches.map((search) => (
                 <Card
                   key={search.id}
-                  className={`cursor-pointer transition-colors ${
+                  className={`cursor-pointer transition-all ${
                     selectedSearch?.id === search.id
-                      ? "ring-2 ring-blue-500"
-                      : "hover:bg-gray-50"
+                      ? "ring-2 ring-primary border-primary/50"
+                      : "hover:bg-muted/50 hover:border-border/80"
                   }`}
                   onClick={() => setSelectedSearch(search)}
                 >
                   <CardContent className="py-4">
-                    <div className="font-medium text-gray-900 mb-1">
-                      {search.address}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {search.city}, {search.state} {search.zipCode}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-2">
-                      {new Date(search.createdAt).toLocaleString()}
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                        <MapPin className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-foreground mb-1 truncate">
+                          {search.address}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {search.city}, {search.state} {search.zipCode}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground/70 mt-2">
+                          <Clock className="w-3 h-3" />
+                          {new Date(search.createdAt).toLocaleString()}
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -146,17 +149,23 @@ export default function HistoryPage() {
               {selectedSearch ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle>{selectedSearch.address}</CardTitle>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <MapPin className="w-5 h-5 text-primary" />
+                      </div>
+                      <CardTitle>{selectedSearch.address}</CardTitle>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
                       {/* Property Data */}
                       {selectedSearch.propertyData && (
                         <div>
-                          <h4 className="font-medium text-gray-900 mb-3">
+                          <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-primary" />
                             Property Details
                           </h4>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 rounded-lg p-4">
                             {Object.entries(selectedSearch.propertyData)
                               .filter(
                                 ([key]) =>
@@ -165,10 +174,10 @@ export default function HistoryPage() {
                               )
                               .map(([key, value]) => (
                                 <div key={key}>
-                                  <span className="text-gray-500 capitalize">
+                                  <span className="text-muted-foreground capitalize">
                                     {key.replace(/([A-Z])/g, " $1").trim()}:
                                   </span>{" "}
-                                  <span className="text-gray-900">
+                                  <span className="text-foreground font-medium">
                                     {typeof value === "number"
                                       ? key.toLowerCase().includes("value") ||
                                         key.toLowerCase().includes("price") ||
@@ -188,10 +197,11 @@ export default function HistoryPage() {
                         Object.keys(selectedSearch.demographicData).length >
                           0 && (
                           <div>
-                            <h4 className="font-medium text-gray-900 mb-3">
+                            <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                              <Users className="w-4 h-4 text-accent" />
                               Area Demographics
                             </h4>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 rounded-lg p-4">
                               {Object.entries(selectedSearch.demographicData)
                                 .filter(
                                   ([, value]) =>
@@ -201,10 +211,10 @@ export default function HistoryPage() {
                                 )
                                 .map(([key, value]) => (
                                   <div key={key}>
-                                    <span className="text-gray-500 capitalize">
+                                    <span className="text-muted-foreground capitalize">
                                       {key.replace(/([A-Z])/g, " $1").trim()}:
                                     </span>{" "}
-                                    <span className="text-gray-900">
+                                    <span className="text-foreground font-medium">
                                       {Array.isArray(value)
                                         ? value.join(", ")
                                         : String(value)}
@@ -218,7 +228,8 @@ export default function HistoryPage() {
                       {/* Buyer Matches */}
                       {selectedSearch.buyerMatches && (
                         <div>
-                          <h4 className="font-medium text-gray-900 mb-3">
+                          <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                            <Users className="w-4 h-4 text-success" />
                             Buyer Insights
                           </h4>
                           {(
@@ -234,7 +245,7 @@ export default function HistoryPage() {
                               ).personas.personas.map((persona, i) => (
                                 <span
                                   key={i}
-                                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm capitalize"
+                                  className="px-3 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-medium capitalize"
                                 >
                                   {persona}
                                 </span>
@@ -248,7 +259,7 @@ export default function HistoryPage() {
                 </Card>
               ) : (
                 <Card>
-                  <CardContent className="py-16 text-center text-gray-500">
+                  <CardContent className="py-16 text-center text-muted-foreground">
                     Select a search from the list to view details
                   </CardContent>
                 </Card>
