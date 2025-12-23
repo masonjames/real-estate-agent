@@ -29,19 +29,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate and clean the address
+    const cleanAddress = address.trim();
+    if (!cleanAddress) {
+      return NextResponse.json(
+        { error: "Address cannot be empty" },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[Research API] Starting research for: "${cleanAddress}"`);
+
     // Run the research agent
-    const result = await runPropertyResearchAgent(address, {
+    const result = await runPropertyResearchAgent(cleanAddress, {
       includeDemographics: true,
       includeBuyerSearch: true,
       includePersonas: true,
     });
+
+    console.log(`[Research API] Research completed for: "${cleanAddress}"`);
 
     // Save the search to the database
     const [savedSearch] = await db
       .insert(propertySearches)
       .values({
         userId: session.user.id,
-        address: address,
+        address: cleanAddress,
         city: result.property?.city,
         state: result.property?.state,
         zipCode: result.property?.zipCode,

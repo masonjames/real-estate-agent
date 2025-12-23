@@ -24,6 +24,7 @@ export interface ResearchResult {
   };
   summary: string;
   recommendations: string[];
+  error?: string; // Error message if property search failed
 }
 
 /**
@@ -46,7 +47,31 @@ export async function runPropertyResearchAgent(
   // Step 1: Search for property details
   const propertyResults = await searchProperty(address);
   const successfulResult = propertyResults.find((r) => r.success);
+  const failedResult = propertyResults.find((r) => !r.success && r.error);
   const property = successfulResult?.property || null;
+  const propertyError = !property && failedResult?.error ? failedResult.error : undefined;
+
+  // If property search failed, return early with error
+  if (!property && propertyError) {
+    return {
+      property: null,
+      demographics: {},
+      potentialBuyers: [],
+      buyerPersonas: {
+        personas: [],
+        targetAudience: "",
+        marketingInsights: [],
+      },
+      summary: propertyError,
+      recommendations: [
+        "Verify the address is correct and complete",
+        "Ensure the property is located in Manatee County, Florida",
+        "Try searching with a slightly different address format",
+        "Contact support if the problem persists",
+      ],
+      error: propertyError,
+    };
+  }
 
   // Step 2: Get demographic insights if property found
   let demographics: DemographicInsights = {};

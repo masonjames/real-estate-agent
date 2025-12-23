@@ -6,6 +6,7 @@ import { useSession } from "@/lib/auth-client";
 import { Header } from "@/components/layout/header";
 import { PropertySearchForm } from "@/components/search/property-search-form";
 import { ResearchResults } from "@/components/search/research-results";
+import { ResearchLoading } from "@/components/search/research-loading";
 import {
   Card,
   CardHeader,
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: session, isPending } = useSession();
   const [isSearching, setIsSearching] = useState(false);
+  const [currentSearchAddress, setCurrentSearchAddress] = useState<string>("");
   const [searchResult, setSearchResult] = useState<ResearchResult | null>(null);
   const [recentSearches, setRecentSearches] = useState<SavedSearch[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -68,6 +70,17 @@ export default function DashboardPage() {
   };
 
   const handleSearch = async (address: string) => {
+    // Validate address is not empty or just whitespace
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      alert("Please enter a valid address");
+      return;
+    }
+
+    // Log the address being searched for debugging
+    console.log("Starting search for address:", trimmedAddress);
+
+    setCurrentSearchAddress(trimmedAddress);
     setIsSearching(true);
     setSearchResult(null);
 
@@ -77,7 +90,7 @@ export default function DashboardPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ address }),
+        body: JSON.stringify({ address: trimmedAddress }),
       });
 
       if (!response.ok) {
@@ -93,6 +106,7 @@ export default function DashboardPage() {
       alert(error instanceof Error ? error.message : "Search failed");
     } finally {
       setIsSearching(false);
+      setCurrentSearchAddress("");
     }
   };
 
@@ -140,16 +154,18 @@ export default function DashboardPage() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {!searchResult ? (
-              <PropertySearchForm
-                onSearch={handleSearch}
-                isLoading={isSearching}
-              />
-            ) : (
+            {isSearching && currentSearchAddress ? (
+              <ResearchLoading address={currentSearchAddress} />
+            ) : searchResult ? (
               <ResearchResults
                 result={searchResult}
                 onSave={handleSave}
                 onNewSearch={handleNewSearch}
+              />
+            ) : (
+              <PropertySearchForm
+                onSearch={handleSearch}
+                isLoading={isSearching}
               />
             )}
           </div>
