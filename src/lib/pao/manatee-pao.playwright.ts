@@ -50,41 +50,40 @@ const SELECTORS = {
   resultsRow: "tbody tr",
   // No results indicator
   noResults: ".no-results, .alert-info, .alert-warning",
-  // Detail page iframe (property data is loaded inside this iframe)
-  detailIframe: 'iframe#skelOwnerContentIFrame, iframe[name="skelOwnerContentIFrame"]',
+  // Owner content section (main page, NOT iframe)
+  ownerContent: ".owner-content, #ownerContent",
+  // Tab navigation (click to reveal content)
+  tabs: {
+    sales: "#sales-nav",
+    values: "#valueHistory-nav",
+    buildings: "#buildings-nav",
+    features: "#features-nav",
+    inspections: "#inspections-nav",
+  },
+  // Data tables (appear after clicking tabs)
+  tables: {
+    sales: "#tableSales",
+    values: "#tableValue",
+    buildings: "#tableBuildings",
+    features: "#tableFeatures",
+    inspections: "#tableInspections",
+  },
 };
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/** Extraction scope: iframeOnly is fast but partial, full includes JS-controlled sections */
-export type ManateePaoScrapeScope = "iframeOnly" | "full";
-
 export interface ManateePaoPlaywrightOptions {
   timeoutMs?: number;
   navTimeoutMs?: number;
   debug?: boolean;
-  /** Extraction scope: "iframeOnly" for fast partial, "full" for complete data (default: "full") */
-  scope?: ManateePaoScrapeScope;
-  /** Prefetched iframe HTML from a previous search step (used for fast iframe-only extraction) */
-  prefetched?: {
-    detailUrl: string;
-    iframeHtml: string;
-    iframeUrl?: string;
-  };
 }
 
-/** Result from finding a detail URL, optionally including prefetched iframe content */
+/** Result from finding a detail URL */
 export interface ManateePaoDetailUrlResult {
   detailUrl: string | null;
   debug: Record<string, unknown>;
-  /** Prefetched iframe HTML if we already landed on the detail page */
-  prefetched?: {
-    detailUrl: string;
-    iframeHtml: string;
-    iframeUrl?: string;
-  };
 }
 
 /** Result from the combined search + extract orchestrator */
@@ -107,202 +106,10 @@ interface AddressParts {
   zipCode?: string;
 }
 
-// ============================================================================
-// Iframe Helpers
-// ============================================================================
-
-/**
- * Wait for the owner content iframe to be available and loaded with REAL content
- * (not just the skeleton placeholder skelA.html)
- */
-async function waitForOwnerIframe(page: Page, timeoutMs: number): Promise<Frame> {
-  // Wait for iframe element to be attached to DOM
-  await page.waitForSelector(SELECTORS.detailIframe, {
-    state: "attached",
-    timeout: timeoutMs,
-  });
-
-  // Try to get frame by name first
-  let frame = page.frame({ name: "skelOwnerContentIFrame" });
-
-  // If not found by name, try via element handle
-  if (!frame) {
-    const iframeHandle = await page.$(SELECTORS.detailIframe);
-    if (iframeHandle) {
-      frame = await iframeHandle.contentFrame();
-    }
-  }
-
-  if (!frame) {
-    throw new PlaywrightError(
-      "Could not access owner content iframe - frame not found",
-      "PARSE_ERROR"
-    );
-  }
-
-  // Wait for iframe document to be ready
-  await frame.waitForLoadState("domcontentloaded");
-
-  // CRITICAL: Wait for REAL content, not the skeleton placeholder (skelA.html)
-  // The skeleton page is tiny and has no property data
-  // Real content has parcel info, owner data, etc.
-  const maxWaitTime = Math.min(timeoutMs, 30000);
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    const frameUrl = frame.url();
-    const content = await frame.content();
-
-    // Check if we're still on the skeleton page
-    const isSkeletonPage = frameUrl.includes("skelA.html") ||
-                           frameUrl.includes("skelB.html") ||
-                           content.length < 2500;
-
-    // Check for real property content markers
-    const hasRealContent = content.toLowerCase().includes("parcel") ||
-                          content.toLowerCase().includes("owner") ||
-                          content.toLowerCase().includes("situs") ||
-                          content.toLowerCase().includes("jurisdiction");
-
-    if (!isSkeletonPage && hasRealContent) {
-      console.log(`[PAO Playwright] Iframe loaded real content (${content.length} chars)`);
-      return frame;
-    }
-
-    // Wait a bit and check again
-    await page.waitForTimeout(500);
-
-    // Re-acquire frame reference in case it was replaced
-    frame = page.frame({ name: "skelOwnerContentIFrame" });
-    if (!frame) {
-      const iframeHandle = await page.$(SELECTORS.detailIframe);
-      if (iframeHandle) {
-        frame = await iframeHandle.contentFrame();
-      }
-    }
-
-    if (!frame) {
-      throw new PlaywrightError(
-        "Iframe disappeared while waiting for content",
-        "PARSE_ERROR"
-      );
-    }
-  }
-
-  // If we timed out waiting for real content, return what we have but log a warning
-  console.warn("[PAO Playwright] Timed out waiting for real iframe content, using current state");
-  return frame;
-}
-
-/**
- * Get the HTML content from the owner content iframe
- * Waits for the iframe to load and for content to be ready
- */
-async function getOwnerIframeHtml(
-  page: Page,
-  timeoutMs: number
-): Promise<{ iframeHtml: string; iframeUrl?: string }> {
-  const frame = await waitForOwnerIframe(page, timeoutMs);
-
-  // Wait for meaningful content inside the iframe
-  // Try to wait for a table (valuations, sales, etc.) or specific content markers
-  try {
-    await frame.waitForSelector("table, .owner-info, #ownerInfo, .parcel-info", {
-      timeout: Math.min(timeoutMs, 15000),
-    });
-  } catch {
-    // If no specific element found, use a heuristic - wait for body to have content
-    console.log("[PAO Playwright] No specific content marker found, using content length heuristic");
-    try {
-      await frame.waitForFunction(
-        () => (document.body?.innerText?.length ?? 0) > 200,
-        { timeout: Math.min(timeoutMs, 10000) }
-      );
-    } catch {
-      console.log("[PAO Playwright] Content length heuristic timed out, continuing with available content");
-    }
-  }
-
-  const iframeHtml = await frame.content();
-  const iframeUrl = frame.url();
-
-  console.log(`[PAO Playwright] Iframe content length: ${iframeHtml.length} chars`);
-  console.log(`[PAO Playwright] Iframe URL: ${iframeUrl}`);
-
-  return { iframeHtml, iframeUrl };
-}
 
 // ============================================================================
-// Main Page JavaScript Section Extraction
+// Main Page Data Extraction
 // ============================================================================
-
-/**
- * Click a JavaScript button on the main page and wait for content to appear
- * Returns the HTML of the revealed section, or null if failed
- *
- * NOTE: These buttons may not be available until the page fully loads.
- * We use short timeouts and don't fail the whole extraction if this fails.
- */
-async function clickAndExtractSection(
-  page: Page,
-  buttonSelector: string,
-  contentSelector: string,
-  timeoutMs: number = 5000 // Short timeout - don't block for long
-): Promise<string | null> {
-  try {
-    // Check if button exists and is visible/enabled
-    const button = await page.$(buttonSelector);
-    if (!button) {
-      console.log(`[PAO Playwright] Button not found: ${buttonSelector}`);
-      return null;
-    }
-
-    // Check if button is enabled before clicking
-    const isDisabled = await button.evaluate((el) => {
-      const htmlEl = el as HTMLElement;
-      return htmlEl.hasAttribute("disabled") ||
-             htmlEl.getAttribute("aria-disabled") === "true" ||
-             htmlEl.classList.contains("disabled") ||
-             getComputedStyle(htmlEl).pointerEvents === "none";
-    });
-
-    if (isDisabled) {
-      console.log(`[PAO Playwright] Button is disabled: ${buttonSelector}`);
-      return null;
-    }
-
-    // Use force: true to bypass actionability checks (the PAO site's JS may be slow)
-    await button.click({ timeout: 3000, force: true });
-
-    // Wait for content to appear (short timeout)
-    try {
-      await page.waitForSelector(contentSelector, {
-        state: "visible",
-        timeout: timeoutMs,
-      });
-    } catch {
-      // Content selector not found - try getting whatever appeared
-      console.log(`[PAO Playwright] Content selector ${contentSelector} not found after click`);
-    }
-
-    // Small delay for any animations/transitions
-    await page.waitForTimeout(300);
-
-    // Get the section content
-    const sectionHandle = await page.$(contentSelector);
-    if (!sectionHandle) {
-      return null;
-    }
-
-    const sectionHtml = await sectionHandle.innerHTML();
-    return sectionHtml;
-  } catch (error) {
-    // Log but don't throw - main page sections are optional
-    const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
-    console.log(`[PAO Playwright] Section extraction skipped (${buttonSelector}): ${errorMsg}`);
-    return null;
-  }
-}
 
 /**
  * Extract owner/property info from the main page .owner-content section
@@ -312,143 +119,84 @@ async function extractOwnerInfoFromMainPage(page: Page): Promise<string | null> 
   console.log("[PAO Playwright] Extracting owner info from main page...");
 
   try {
-    // The owner content is in .owner-content or .card-body.owner-content
-    const ownerContent = await page.$(".owner-content, .card-body.owner-content");
+    const ownerContent = await page.$(SELECTORS.ownerContent);
     if (ownerContent) {
       const html = await page.evaluate((el) => el.innerHTML, ownerContent);
       console.log(`[PAO Playwright] Found owner content: ${html?.length || 0} chars`);
       return html;
     }
   } catch {
-    console.log("[PAO Playwright] Could not find .owner-content");
-  }
-
-  // Fallback: try to get the first card body in the property card section
-  try {
-    const propertyCard = await page.$("#property-card .card-body, .property-card .card-body");
-    if (propertyCard) {
-      const html = await page.evaluate((el) => el.innerHTML, propertyCard);
-      return html;
-    }
-  } catch {
-    // Continue
+    console.log("[PAO Playwright] Could not find owner content section");
   }
 
   return null;
 }
 
 /**
- * Click a tab and extract the pane content.
- * Resolves pane ID from tab's aria-controls, data-bs-target, or href attributes.
+ * Click a tab and extract the corresponding table
+ * The PAO site dynamically loads table content into card bodies when tabs are clicked
+ * NOTE: If a tab is already active, it appears as "disabled" - in that case, the table is already visible
  */
-async function clickTabAndExtract(
+async function clickTabAndExtractTable(
   page: Page,
-  tabHref: string,
+  tabSelector: string,
+  tableSelector: string,
   description: string
 ): Promise<string | null> {
   try {
-    console.log(`[PAO Playwright] Clicking ${description} tab (${tabHref})...`);
+    // First check if table is already visible (tab might be active)
+    let table = await page.$(tableSelector);
+    if (table) {
+      const html = await page.evaluate((el) => el.outerHTML, table);
+      const rowCount = await page.evaluate((sel) => {
+        const t = document.querySelector(sel);
+        return t?.querySelectorAll("tbody tr").length || 0;
+      }, tableSelector);
 
-    const hrefId = tabHref.replace("#", "");
-
-    // Try multiple selector patterns - Bootstrap uses various conventions
-    const tabSelectors = [
-      `a[href="${tabHref}"]`,
-      `a[href$="${tabHref}"]`,  // Ends with (for full URLs with hash)
-      `.nav-link[href="${tabHref}"]`,
-      `[aria-controls="${hrefId}"]`,
-      `[data-bs-target="${tabHref}"]`,
-      `button[data-bs-target="${tabHref}"]`,
-      // Text-based fallback
-      `.nav-link:has-text("${description}")`,
-      `a.nav-link:has-text("${description}")`,
-    ];
-
-    let tab = null;
-    let usedSelector = "";
-    for (const selector of tabSelectors) {
-      try {
-        tab = await page.$(selector);
-        if (tab) {
-          usedSelector = selector;
-          break;
-        }
-      } catch {
-        // Continue to next selector
+      if (rowCount > 0) {
+        console.log(`[PAO Playwright] ${description} table already visible: ${rowCount} rows, ${html?.length || 0} chars`);
+        return html;
       }
     }
 
+    // Table not visible or empty, need to click tab
+    console.log(`[PAO Playwright] Clicking ${description} tab (${tabSelector})...`);
+    const tab = await page.$(tabSelector);
     if (!tab) {
-      console.log(`[PAO Playwright] ${description} tab not found with any selector`);
+      console.log(`[PAO Playwright] ${description} tab not found: ${tabSelector}`);
       return null;
     }
 
-    console.log(`[PAO Playwright] Found ${description} tab with: ${usedSelector}`);
+    // Check if tab is disabled (already active) - try to read table anyway
+    const isDisabled = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      return el?.hasAttribute("disabled") || el?.classList.contains("disabled");
+    }, tabSelector);
 
-    // Get the pane ID from the tab element's attributes BEFORE clicking
-    const paneSelector = await tab.evaluate((el) => {
-      // Priority: aria-controls > data-bs-target > href
-      const ariaControls = el.getAttribute("aria-controls");
-      if (ariaControls) return `#${ariaControls}`;
-
-      const dataBsTarget = el.getAttribute("data-bs-target");
-      if (dataBsTarget) return dataBsTarget; // Already includes #
-
-      const href = el.getAttribute("href");
-      if (href) {
-        // Handle both "#id" and "url#id" formats
-        const hashIndex = href.indexOf("#");
-        if (hashIndex !== -1) {
-          return href.substring(hashIndex);
-        }
-      }
-
-      return null;
-    });
-
-    console.log(`[PAO Playwright] Resolved pane selector: ${paneSelector}`);
-
-    // Click the tab
-    await tab.click();
-    await page.waitForTimeout(500); // Wait for tab transition
-
-    // Try to find the pane using resolved selector
-    if (paneSelector) {
-      const pane = await page.$(paneSelector);
-      if (pane) {
-        // Wait for pane to have content (dynamic loading)
-        await page.waitForTimeout(300);
-        const html = await page.evaluate((el) => el.innerHTML, pane);
-        if (html && html.length > 50) {
-          console.log(`[PAO Playwright] ${description} content: ${html.length} chars`);
-          return html;
-        }
-      }
+    if (!isDisabled) {
+      // Click the tab
+      await tab.click();
+      await page.waitForTimeout(800); // Wait for content to load
+    } else {
+      console.log(`[PAO Playwright] ${description} tab is active/disabled, reading table directly`);
     }
 
-    // Fallback: Look for any active tab pane near the clicked tab
-    const fallbackHtml = await page.evaluate((desc) => {
-      // Find active tab pane
-      const activePanes = document.querySelectorAll(".tab-pane.active, .tab-pane.show");
-      for (const pane of activePanes) {
-        const text = pane.textContent?.toLowerCase() || "";
-        // Check if this pane likely matches our tab based on content
-        if (desc.toLowerCase() === "inspections" && (text.includes("inspection") || text.includes("inspector"))) {
-          return pane.innerHTML;
-        }
-        if (desc.toLowerCase() === "features" && (text.includes("feature") || text.includes("extra"))) {
-          return pane.innerHTML;
-        }
-      }
+    // Wait for the table to appear
+    try {
+      await page.waitForSelector(tableSelector, { timeout: 3000 });
+    } catch {
+      console.log(`[PAO Playwright] Table ${tableSelector} not found after ${isDisabled ? 'checking' : 'clicking'} ${description} tab`);
       return null;
-    }, description);
-
-    if (fallbackHtml && fallbackHtml.length > 50) {
-      console.log(`[PAO Playwright] ${description} content (fallback): ${fallbackHtml.length} chars`);
-      return fallbackHtml;
     }
 
-    console.log(`[PAO Playwright] ${description} pane not found or empty`);
+    // Extract the table HTML
+    table = await page.$(tableSelector);
+    if (table) {
+      const html = await page.evaluate((el) => el.outerHTML, table);
+      console.log(`[PAO Playwright] ${description} table: ${html?.length || 0} chars`);
+      return html;
+    }
+
     return null;
   } catch (e) {
     const msg = e instanceof Error ? e.message.split('\n')[0] : String(e);
@@ -460,73 +208,81 @@ async function clickTabAndExtract(
 /**
  * Extract data from all sections on the main page
  *
- * PAGE STRUCTURE (discovered via browser inspection):
+ * PAGE STRUCTURE (discovered via browser inspection December 2024):
  * - Owner info: .owner-content (NOT in iframe - iframe is just a CSS skeleton!)
- * - Sales card tabs: Sales (default) | Exemptions | Businesses | Addresses | Inspections
- * - Values card tabs: Values (default) | Land | Buildings | Features | Permits
+ * - Sales card (#dgSmall) tabs: Sales | Exemptions | Businesses | Addresses | Inspections
+ * - Values card (#dgLarge) tabs: Values | Land | Buildings | Features | Permits
  *
- * Tables have specific IDs: #tableSales, #tableValue
- * Tabs use href attributes: a[href="#inspections"], a[href="#features"]
+ * Tables are dynamically loaded when tabs are clicked:
+ * - #tableSales, #tableValue, #tableBuildings, #tableFeatures, #tableInspections
  */
 async function extractMainPageSections(
-  page: Page,
-  _timeoutMs: number = 5000
+  page: Page
 ): Promise<{
   ownerHtml: string | null;
-  valueHistoryHtml: string | null;
   salesHtml: string | null;
+  valuesHtml: string | null;
+  buildingsHtml: string | null;
   featuresHtml: string | null;
   inspectionsHtml: string | null;
 }> {
   console.log("[PAO Playwright] Extracting main page sections...");
 
   // ===== OWNER INFO =====
-  // This is on the main page in .owner-content, NOT in the iframe
   const ownerHtml = await extractOwnerInfoFromMainPage(page);
 
-  // ===== VISIBLE BY DEFAULT: Values and Sales Tables =====
-  // The PAO site uses specific table IDs: #tableValue and #tableSales
+  // ===== SALES CARD TABS =====
+  // Click Sales tab first to load sales data
+  const salesHtml = await clickTabAndExtractTable(
+    page,
+    SELECTORS.tabs.sales,
+    SELECTORS.tables.sales,
+    "Sales"
+  );
 
-  console.log("[PAO Playwright] Extracting Values table (#tableValue)...");
-  let valueHistoryHtml: string | null = null;
-  try {
-    const valueTable = await page.$("#tableValue");
-    if (valueTable) {
-      valueHistoryHtml = await page.evaluate((el) => el.outerHTML, valueTable);
-      console.log(`[PAO Playwright] Found Values table: ${valueHistoryHtml?.length || 0} chars`);
-    }
-  } catch {
-    console.log("[PAO Playwright] Could not find #tableValue");
-  }
+  // Click Inspections tab (same card as Sales)
+  const inspectionsHtml = await clickTabAndExtractTable(
+    page,
+    SELECTORS.tabs.inspections,
+    SELECTORS.tables.inspections,
+    "Inspections"
+  );
 
-  console.log("[PAO Playwright] Extracting Sales table (#tableSales)...");
-  let salesHtml: string | null = null;
-  try {
-    const salesTable = await page.$("#tableSales");
-    if (salesTable) {
-      salesHtml = await page.evaluate((el) => el.outerHTML, salesTable);
-      console.log(`[PAO Playwright] Found Sales table: ${salesHtml?.length || 0} chars`);
-    }
-  } catch {
-    console.log("[PAO Playwright] Could not find #tableSales");
-  }
+  // ===== VALUES CARD TABS =====
+  // Click Values tab first to load valuations
+  const valuesHtml = await clickTabAndExtractTable(
+    page,
+    SELECTORS.tabs.values,
+    SELECTORS.tables.values,
+    "Values"
+  );
 
-  // ===== TAB-BASED SECTIONS: Inspections and Features =====
-  // These are in tab panes - click the tab to reveal content
-  // Tab hrefs: #inspections (in Sales card), #features (in Values card)
+  // Click Buildings tab (same card as Values) - has bedroom/bathroom info
+  const buildingsHtml = await clickTabAndExtractTable(
+    page,
+    SELECTORS.tabs.buildings,
+    SELECTORS.tables.buildings,
+    "Buildings"
+  );
 
-  const inspectionsHtml = await clickTabAndExtract(page, "#inspections", "Inspections");
-  const featuresHtml = await clickTabAndExtract(page, "#features", "Features");
+  // Click Features tab (same card as Values)
+  const featuresHtml = await clickTabAndExtractTable(
+    page,
+    SELECTORS.tabs.features,
+    SELECTORS.tables.features,
+    "Features"
+  );
 
   console.log(`[PAO Playwright] Main page sections extracted:`, {
     owner: ownerHtml ? `${ownerHtml.length} chars` : "NOT FOUND",
-    valueHistory: valueHistoryHtml ? `${valueHistoryHtml.length} chars` : "NOT FOUND",
-    sales: salesHtml ? `${salesHtml.length} chars` : "NOT FOUND",
+    sales: salesHtml ? `${salesHtml.length} chars` : "not found",
+    values: valuesHtml ? `${valuesHtml.length} chars` : "not found",
+    buildings: buildingsHtml ? `${buildingsHtml.length} chars` : "not found",
     features: featuresHtml ? `${featuresHtml.length} chars` : "not found",
     inspections: inspectionsHtml ? `${inspectionsHtml.length} chars` : "not found",
   });
 
-  return { ownerHtml, valueHistoryHtml, salesHtml, featuresHtml, inspectionsHtml };
+  return { ownerHtml, salesHtml, valuesHtml, buildingsHtml, featuresHtml, inspectionsHtml };
 }
 
 /**
@@ -636,20 +392,121 @@ function parseInspectionsFromHtml(html: string): InspectionRecord[] {
   return inspections;
 }
 
+/**
+ * Parse building info from the Buildings table HTML
+ * Extracts: type, year built, stories, sqft under roof, living area, rooms (bed/bath), construction, roof
+ *
+ * Table columns: Type | Bldg | Classification | Yrblt | Effyr | Stories | UnRoof | LivBus | Rooms | Const/ExtWall | RoofMaterial | RoofType
+ * Rooms format: "3/2/0" = 3 bedrooms / 2 bathrooms / 0 half baths
+ */
+function parseBuildingsFromHtml(html: string): Partial<PropertyDetails> {
+  const $ = cheerio.load(html);
+  const details: Partial<PropertyDetails> = {
+    building: {},
+  };
+
+  // Find the first data row (skip header)
+  const dataRow = $("table tbody tr").first();
+  if (!dataRow.length) {
+    return details;
+  }
+
+  const cells = dataRow.find("td");
+
+  // Map cells to column indices based on PAO table structure
+  // Type | Bldg | Classification | Yrblt | Effyr | Stories | UnRoof | LivBus | Rooms | Const/ExtWall | RoofMaterial | RoofType
+  const getValue = (index: number): string => {
+    return cells.eq(index).text().trim();
+  };
+
+  // Year built (column 3)
+  const yearBuilt = getValue(3);
+  if (yearBuilt && /^\d{4}$/.test(yearBuilt)) {
+    details.building!.yearBuilt = parseInt(yearBuilt, 10);
+  }
+
+  // Effective year (column 4)
+  const effYear = getValue(4);
+  if (effYear && /^\d{4}$/.test(effYear)) {
+    details.building!.effectiveYearBuilt = parseInt(effYear, 10);
+  }
+
+  // Stories (column 5)
+  const stories = getValue(5);
+  if (stories) {
+    const storiesNum = parseFloat(stories);
+    if (!isNaN(storiesNum)) {
+      details.building!.stories = storiesNum;
+    }
+  }
+
+  // Under Roof sqft (column 6)
+  const underRoof = getValue(6);
+  if (underRoof) {
+    const sqft = parseNumber(underRoof);
+    if (sqft) {
+      details.building!.totalAreaSqFt = sqft;
+    }
+  }
+
+  // Living/Business area sqft (column 7)
+  const livBus = getValue(7);
+  if (livBus) {
+    const sqft = parseNumber(livBus);
+    if (sqft) {
+      details.building!.livingAreaSqFt = sqft;
+    }
+  }
+
+  // Rooms - format "3/2/0" = bedrooms/bathrooms/half-baths (column 8)
+  const rooms = getValue(8);
+  if (rooms) {
+    const roomParts = rooms.split("/");
+    if (roomParts.length >= 2) {
+      const bedrooms = parseInt(roomParts[0], 10);
+      const bathrooms = parseInt(roomParts[1], 10);
+      const halfBaths = roomParts[2] ? parseInt(roomParts[2], 10) : 0;
+
+      if (!isNaN(bedrooms)) {
+        details.building!.bedrooms = bedrooms;
+      }
+      if (!isNaN(bathrooms)) {
+        // Full bathrooms + half baths as decimal
+        details.building!.bathrooms = bathrooms + (halfBaths * 0.5);
+        details.building!.fullBathrooms = bathrooms;
+        details.building!.halfBathrooms = halfBaths;
+      }
+    }
+  }
+
+  // Construction/Exterior Wall (column 9) - e.g., "MASONRY/STUCCO"
+  const construction = getValue(9);
+  if (construction) {
+    const parts = construction.split("/");
+    details.building!.constructionType = parts[0]?.trim();
+    if (parts[1]) {
+      details.building!.exteriorWalls = parts[1].trim();
+    }
+  }
+
+  // Roof Material (column 10) - e.g., "SHEET METAL"
+  const roofMaterial = getValue(10);
+  if (roofMaterial) {
+    details.building!.roofCover = roofMaterial;
+  }
+
+  // Roof Type (column 11) - e.g., "HIP AND/OR GABLE"
+  const roofType = getValue(11);
+  if (roofType) {
+    details.building!.roofStructure = roofType;
+  }
+
+  return details;
+}
+
 // ============================================================================
 // Property Data Helpers (Parsing & Merging)
 // ============================================================================
-
-/**
- * Parse iframe HTML into property details (pure function, no Playwright)
- */
-function parseIframePropertyHtml(
-  iframeHtml: string,
-  detailUrl: string
-): Partial<PropertyDetails> {
-  const $ = cheerio.load(iframeHtml);
-  return extractPropertyData($, detailUrl);
-}
 
 /**
  * Parse owner/property info from main page HTML using DOM extraction
@@ -903,13 +760,12 @@ function parseOwnerInfoFromMainPageHtml(html: string): Partial<PropertyDetails> 
 
 /**
  * Extract all data from main page sections
- * Returns parsed property data (owner info, valuations, sales, features, inspections)
+ * Returns parsed property data (owner info, valuations, sales, buildings, features, inspections)
  */
 async function extractSupplementalFromMainPage(
-  page: Page,
-  timeoutMs: number
+  page: Page
 ): Promise<Partial<PropertyDetails>> {
-  const sections = await extractMainPageSections(page, timeoutMs);
+  const sections = await extractMainPageSections(page);
   let supplemental: Partial<PropertyDetails> = {};
 
   // Parse owner info from main page (NOT iframe!)
@@ -918,21 +774,30 @@ async function extractSupplementalFromMainPage(
     console.log(`[PAO Playwright] Parsed owner info: ${supplemental.owner || 'unknown'}`);
   }
 
-  // Parse value history
-  if (sections.valueHistoryHtml) {
-    const $values = cheerio.load(sections.valueHistoryHtml);
+  // Parse valuations (Values tab)
+  if (sections.valuesHtml) {
+    const $values = cheerio.load(sections.valuesHtml);
     supplemental.valuations = parseValuationsTable($values);
     console.log(`[PAO Playwright] Parsed ${supplemental.valuations?.length || 0} valuation records`);
   }
 
-  // Parse sales history
+  // Parse sales history (Sales tab)
   if (sections.salesHtml) {
     const $sales = cheerio.load(sections.salesHtml);
     supplemental.salesHistory = parseSalesTable($sales);
     console.log(`[PAO Playwright] Parsed ${supplemental.salesHistory?.length || 0} sale records`);
   }
 
-  // Parse features
+  // Parse buildings info (Buildings tab) - has bedroom/bathroom info
+  if (sections.buildingsHtml) {
+    const buildingInfo = parseBuildingsFromHtml(sections.buildingsHtml);
+    if (buildingInfo.building) {
+      supplemental.building = { ...supplemental.building, ...buildingInfo.building };
+      console.log(`[PAO Playwright] Parsed building info: ${buildingInfo.building.bedrooms || 0} bed, ${buildingInfo.building.bathrooms || 0} bath`);
+    }
+  }
+
+  // Parse features (Features tab)
   if (sections.featuresHtml) {
     const paoExtraFeatures = parseExtraFeaturesFromHtml(sections.featuresHtml);
     if (paoExtraFeatures.length > 0) {
@@ -941,7 +806,7 @@ async function extractSupplementalFromMainPage(
     }
   }
 
-  // Parse inspections
+  // Parse inspections (Inspections tab)
   if (sections.inspectionsHtml) {
     const inspections = parseInspectionsFromHtml(sections.inspectionsHtml);
     if (inspections.length > 0) {
@@ -1107,7 +972,7 @@ async function findManateePaoDetailUrlOnPage(
   // Wait for results/detail page
   try {
     await page.waitForSelector(
-      `${SELECTORS.detailIframe}, ${SELECTORS.resultsTable}, ${SELECTORS.noResults}, table.table`,
+      `${SELECTORS.ownerContent}, ${SELECTORS.resultsTable}, ${SELECTORS.noResults}, table.table`,
       { timeout: navTimeoutMs }
     );
   } catch {
@@ -1176,17 +1041,17 @@ async function findManateePaoDetailUrlOnPage(
 /**
  * Extract property data from a detail page (page-scoped, assumes we're on the detail page)
  * This is the internal primitive used by the orchestrator
+ *
+ * NOTE: All data is extracted from the main page by clicking tabs.
+ * The iframe on the PAO site is just a CSS skeleton placeholder.
  */
 async function extractManateePaoPropertyFromDetailPage(
   page: Page,
   detailUrl: string,
-  options?: ManateePaoPlaywrightOptions
+  _options?: ManateePaoPlaywrightOptions
 ): Promise<{ scraped: Partial<PropertyDetails>; debug: Record<string, unknown> }> {
-  const navTimeoutMs = options?.navTimeoutMs || 45000;
-  const scope = options?.scope || "full";
   const debug: Record<string, unknown> = {
     detailUrl,
-    scope,
     startTime: new Date().toISOString(),
   };
 
@@ -1202,51 +1067,30 @@ async function extractManateePaoPropertyFromDetailPage(
     );
   }
 
-  // Extract iframe content
-  console.log("[PAO Playwright] Waiting for owner content iframe...");
-  const { iframeHtml, iframeUrl } = await getOwnerIframeHtml(page, navTimeoutMs);
-  debug.iframeHtmlLength = iframeHtml.length;
-  debug.iframeUrl = iframeUrl;
+  // Extract all data from main page by clicking tabs
+  // NOTE: The iframe is just a skeleton placeholder - real data is on main page
+  console.log("[PAO Playwright] Extracting property data from main page tabs...");
+  try {
+    const scraped = await extractSupplementalFromMainPage(page);
 
-  // Check blocking in iframe
-  const iframeBlockCheck = detectBlocking(iframeHtml);
-  if (iframeBlockCheck.blocked) {
-    throw new PlaywrightError(
-      `PAO iframe content blocking: ${iframeBlockCheck.reason}`,
-      "BLOCKED"
-    );
+    debug.mainPageSectionsExtracted = true;
+    debug.valuations = scraped.valuations?.length || 0;
+    debug.salesHistory = scraped.salesHistory?.length || 0;
+    debug.extraFeatures = scraped.extras?.paoExtraFeatures?.length || 0;
+    debug.inspections = scraped.extras?.inspections?.length || 0;
+    debug.hasOwner = !!scraped.owner;
+    debug.hasBuildingInfo = !!(scraped.building?.bedrooms || scraped.building?.yearBuilt);
+
+    debug.totalFieldsExtracted = Object.keys(scraped).filter(
+      (k) => scraped[k as keyof typeof scraped] !== undefined
+    ).length;
+
+    return { scraped, debug };
+  } catch (error) {
+    debug.mainPageSectionsError = error instanceof Error ? error.message : String(error);
+    console.error("[PAO Playwright] Failed to extract main page sections:", error);
+    throw error;
   }
-
-  // Parse iframe data
-  let scraped = parseIframePropertyHtml(iframeHtml, detailUrl);
-  debug.iframeFieldsExtracted = Object.keys(scraped).filter(
-    (k) => scraped[k as keyof typeof scraped] !== undefined
-  ).length;
-
-  // If scope is "full", also extract main page sections
-  if (scope === "full") {
-    console.log("[PAO Playwright] Extracting main page JavaScript sections...");
-    try {
-      const supplemental = await extractSupplementalFromMainPage(page, navTimeoutMs);
-      scraped = mergePropertyDetails(scraped, supplemental);
-      debug.mainPageSectionsExtracted = true;
-      debug.supplementalValuations = supplemental.valuations?.length || 0;
-      debug.supplementalSales = supplemental.salesHistory?.length || 0;
-      debug.supplementalFeatures = supplemental.extras?.paoExtraFeatures?.length || 0;
-      debug.supplementalInspections = supplemental.extras?.inspections?.length || 0;
-    } catch (error) {
-      debug.mainPageSectionsError = error instanceof Error ? error.message : String(error);
-      console.warn("[PAO Playwright] Failed to extract main page sections:", error);
-    }
-  } else {
-    debug.mainPageSectionsSkipped = true;
-  }
-
-  debug.totalFieldsExtracted = Object.keys(scraped).filter(
-    (k) => scraped[k as keyof typeof scraped] !== undefined
-  ).length;
-
-  return { scraped, debug };
 }
 
 // ============================================================================
@@ -1312,11 +1156,11 @@ export async function findManateePaoDetailUrlByAddressPlaywright(
           submitButton.click(),
         ]);
 
-        // Wait for either results table, no-results message, or detail iframe (direct redirect)
+        // Wait for either results table, no-results message, or owner content (direct redirect)
         // This is more deterministic than networkidle
         try {
           await page.waitForSelector(
-            `${SELECTORS.detailIframe}, ${SELECTORS.resultsTable}, ${SELECTORS.noResults}, table.table`,
+            `${SELECTORS.ownerContent}, ${SELECTORS.resultsTable}, ${SELECTORS.noResults}, table.table`,
             { timeout: navTimeoutMs }
           );
         } catch {
@@ -1340,28 +1184,9 @@ export async function findManateePaoDetailUrlByAddressPlaywright(
         if (directParcelMatch) {
           const parcelId = directParcelMatch[1];
           console.log(`[PAO Playwright] Direct navigation to parcel detail page! Parcel ID: ${parcelId}`);
-
-          // Prefetch iframe HTML since we're already on the detail page
-          // This avoids a redundant browser navigation in extractManateePaoPropertyPlaywright
-          let prefetched: ManateePaoDetailUrlResult["prefetched"] | undefined;
-          try {
-            console.log("[PAO Playwright] Prefetching iframe content from detail page...");
-            const { iframeHtml, iframeUrl } = await getOwnerIframeHtml(page, navTimeoutMs);
-            prefetched = {
-              detailUrl: currentUrl,
-              iframeHtml,
-              iframeUrl,
-            };
-            console.log(`[PAO Playwright] Prefetched iframe: ${iframeHtml.length} chars`);
-          } catch (prefetchError) {
-            // Non-fatal: extraction can still navigate to the page itself
-            console.warn("[PAO Playwright] Could not prefetch iframe, extraction will navigate:", prefetchError);
-          }
-
           return {
             detailUrl: currentUrl,
             addressFound: true,
-            prefetched,
           };
         }
 
@@ -1419,7 +1244,6 @@ export async function findManateePaoDetailUrlByAddressPlaywright(
 
     debug.detailUrl = result.detailUrl;
     debug.addressFound = result.addressFound;
-    debug.hasPrefetchedIframe = !!result.prefetched;
     debug.success = true;
 
     // Important: Only return URL if address was actually found in results
@@ -1432,7 +1256,6 @@ export async function findManateePaoDetailUrlByAddressPlaywright(
     return {
       detailUrl: result.detailUrl,
       debug,
-      prefetched: result.prefetched,
     };
   } catch (error) {
     debug.error = error instanceof Error ? error.message : String(error);
@@ -1454,11 +1277,8 @@ export async function findManateePaoDetailUrlByAddressPlaywright(
  * Extract property details from a PAO detail page
  * Uses deterministic HTML parsing (Cheerio) instead of LLM extraction
  *
- * The PAO detail pages load property data inside an iframe (skelOwnerContentIFrame).
- * This function extracts HTML from that iframe and parses it with Cheerio.
- *
- * If prefetched iframe HTML is provided (from findManateePaoDetailUrlByAddressPlaywright),
- * it skips browser navigation entirely and parses directly.
+ * All property data is extracted from the main page by clicking tabs.
+ * The iframe on the PAO site is just a CSS skeleton placeholder.
  */
 export async function extractManateePaoPropertyPlaywright(
   detailUrl: string,
@@ -1471,143 +1291,26 @@ export async function extractManateePaoPropertyPlaywright(
     startTime: new Date().toISOString(),
   };
 
-  // Fast path: use prefetched iframe HTML if available (skips Playwright navigation)
-  // NOTE: When using prefetched mode, we only get iframe data (basic property info).
-  // Main page sections (value history, sales, features, inspections) require browser navigation.
-  if (options?.prefetched?.iframeHtml) {
-    console.log("[PAO Playwright] Using prefetched iframe HTML - skipping browser navigation");
-    console.log("[PAO Playwright] Note: Main page sections (history/sales/features/inspections) not available in prefetched mode");
-    debug.usedPrefetchedIframe = true;
-    debug.prefetchedIframeLength = options.prefetched.iframeHtml.length;
-    debug.prefetchedIframeUrl = options.prefetched.iframeUrl;
-    debug.mainPageSectionsSkipped = true;
-
-    try {
-      const $ = cheerio.load(options.prefetched.iframeHtml);
-      const scraped = extractPropertyData($, detailUrl);
-      debug.fieldsExtracted = Object.keys(scraped).filter(
-        (k) => scraped[k as keyof typeof scraped] !== undefined
-      ).length;
-      debug.success = true;
-      return { scraped, debug };
-    } catch (error) {
-      debug.prefetchedParseError = error instanceof Error ? error.message : String(error);
-      console.warn("[PAO Playwright] Failed to parse prefetched HTML, falling back to browser navigation");
-      // Fall through to browser navigation
-    }
-  }
-
   try {
     const result = await withPage(
       async (page) => {
-        // Navigate to detail page (use domcontentloaded, not networkidle)
+        // Navigate to detail page
         console.log(`[PAO Playwright] Navigating to detail page: ${detailUrl}`);
         await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
 
-        // Get outer page content for blocking check only
-        const outerHtml = await page.content();
-        debug.outerHtmlLength = outerHtml.length;
+        // Wait for page content to load
+        await page.waitForTimeout(1000);
 
-        // Check for blocking on outer page
-        const blockCheck = detectBlocking(outerHtml);
-        if (blockCheck.blocked) {
-          throw new PlaywrightError(
-            `PAO detail page blocking: ${blockCheck.reason}`,
-            "BLOCKED"
-          );
-        }
-
-        // Wait for and extract iframe content - this is where the actual property data lives
-        console.log("[PAO Playwright] Waiting for owner content iframe...");
-        const { iframeHtml, iframeUrl } = await getOwnerIframeHtml(page, navTimeoutMs);
-        debug.iframeHtmlLength = iframeHtml.length;
-        debug.iframeUrl = iframeUrl;
-
-        // Check for blocking in iframe content too
-        const iframeBlockCheck = detectBlocking(iframeHtml);
-        if (iframeBlockCheck.blocked) {
-          throw new PlaywrightError(
-            `PAO iframe content blocking: ${iframeBlockCheck.reason}`,
-            "BLOCKED"
-          );
-        }
-
-        // Parse the iframe HTML with Cheerio
-        const $ = cheerio.load(iframeHtml);
-
-        // Extract all property data from iframe content
-        const scraped = extractPropertyData($, detailUrl);
-
-        // Now extract data from main page JavaScript-controlled sections
-        // These include: Value History, Sales, Features, Inspections
-        console.log("[PAO Playwright] Now extracting main page JavaScript sections...");
-        try {
-          const mainPageSections = await extractMainPageSections(page, navTimeoutMs);
-
-          // Parse and merge value history if available
-          if (mainPageSections.valueHistoryHtml) {
-            const valueHistoryHtml = mainPageSections.valueHistoryHtml;
-            const $values = cheerio.load(valueHistoryHtml);
-            const additionalValuations = parseValuationsTable($values);
-            if (additionalValuations.length > 0) {
-              // Merge with existing valuations, avoiding duplicates by year
-              const existingYears = new Set((scraped.valuations || []).map(v => v.year));
-              const newValuations = additionalValuations.filter(v => !existingYears.has(v.year));
-              scraped.valuations = [...(scraped.valuations || []), ...newValuations];
-              console.log(`[PAO Playwright] Added ${newValuations.length} valuations from main page`);
-            }
-          }
-
-          // Parse and merge sales history if available
-          if (mainPageSections.salesHtml) {
-            const salesHtml = mainPageSections.salesHtml;
-            const $sales = cheerio.load(salesHtml);
-            const additionalSales = parseSalesTable($sales);
-            if (additionalSales.length > 0) {
-              // Merge with existing sales, avoiding obvious duplicates
-              const existingDates = new Set((scraped.salesHistory || []).map(s => s.date));
-              const newSales = additionalSales.filter(s => !existingDates.has(s.date));
-              scraped.salesHistory = [...(scraped.salesHistory || []), ...newSales];
-              console.log(`[PAO Playwright] Added ${newSales.length} sales from main page`);
-            }
-          }
-
-          // Parse and add extra features if available
-          if (mainPageSections.featuresHtml) {
-            const extraFeatures = parseExtraFeaturesFromHtml(mainPageSections.featuresHtml);
-            if (extraFeatures.length > 0) {
-              scraped.extras = scraped.extras || {};
-              scraped.extras.paoExtraFeatures = extraFeatures;
-              console.log(`[PAO Playwright] Added ${extraFeatures.length} extra features from main page`);
-            }
-          }
-
-          // Parse and add inspections if available
-          if (mainPageSections.inspectionsHtml) {
-            const inspections = parseInspectionsFromHtml(mainPageSections.inspectionsHtml);
-            if (inspections.length > 0) {
-              scraped.extras = scraped.extras || {};
-              scraped.extras.inspections = inspections;
-              console.log(`[PAO Playwright] Added ${inspections.length} inspections from main page`);
-            }
-          }
-        } catch (mainPageError) {
-          // Don't fail the whole extraction if main page sections fail
-          console.warn("[PAO Playwright] Failed to extract some main page sections:", mainPageError);
-          debug.mainPageSectionsError = mainPageError instanceof Error ? mainPageError.message : String(mainPageError);
-        }
-
-        debug.fieldsExtracted = Object.keys(scraped).filter(
-          (k) => scraped[k as keyof typeof scraped] !== undefined
-        ).length;
-
-        return scraped;
+        // Extract property data from main page
+        return await extractManateePaoPropertyFromDetailPage(page, detailUrl, options);
       },
       { opTimeoutMs: timeoutMs, navTimeoutMs }
     );
 
-    debug.success = true;
-    return { scraped: result, debug };
+    return {
+      scraped: result.scraped,
+      debug: { ...debug, ...result.debug, success: true },
+    };
   } catch (error) {
     debug.error = error instanceof Error ? error.message : String(error);
     debug.errorType = error instanceof PlaywrightError ? error.code : "UNKNOWN";
@@ -1625,7 +1328,7 @@ export async function extractManateePaoPropertyPlaywright(
  * This is the most efficient approach - it uses a single browser session to:
  * 1. Search for the property by address
  * 2. Navigate to the detail page (or stay if already there)
- * 3. Extract BOTH iframe data AND main page JavaScript sections
+ * 3. Extract all property data by clicking tabs
  *
  * Unlike the separate find + extract functions, this never misses data because
  * it doesn't close the browser between steps.
@@ -1636,10 +1339,8 @@ export async function scrapeManateePaoPropertyByAddressPlaywright(
 ): Promise<ManateePaoScrapeResult> {
   const timeoutMs = options?.timeoutMs || 60000;
   const navTimeoutMs = options?.navTimeoutMs || 45000;
-  const scope = options?.scope || "full";
   const debug: Record<string, unknown> = {
     address,
-    scope,
     orchestratorUsed: true,
     startTime: new Date().toISOString(),
   };
@@ -1680,12 +1381,12 @@ export async function scrapeManateePaoPropertyByAddressPlaywright(
           console.log("[PAO Orchestrator] Already on detail page, skipping navigation");
         }
 
-        // Step 3: Extract all property data (iframe + main page sections)
+        // Step 3: Extract all property data from main page tabs
         console.log("[PAO Orchestrator] Extracting property data...");
         const extractResult = await extractManateePaoPropertyFromDetailPage(
           page,
           findResult.detailUrl,
-          { ...options, scope }
+          options
         );
         debug.extractDebug = extractResult.debug;
 

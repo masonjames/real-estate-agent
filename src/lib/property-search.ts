@@ -624,10 +624,8 @@ export async function searchManateePAO(
 
   try {
     // Use the single-session orchestrator for complete data extraction
-    // This extracts BOTH iframe data AND main page JS sections (valuations, sales, features, inspections)
-    const scrapeResult = await scrapeManateePaoPropertyByAddressPlaywright(cleanAddress, {
-      scope: "full", // Extract everything: iframe + main page sections
-    });
+    // Extracts owner info + main page tabs (Sales, Values, Buildings, Features, Inspections)
+    const scrapeResult = await scrapeManateePaoPropertyByAddressPlaywright(cleanAddress);
 
     let { detailUrl, scraped } = scrapeResult;
     const { debug } = scrapeResult;
@@ -640,10 +638,8 @@ export async function searchManateePAO(
         detailUrl = `https://www.manateepao.gov/parcel/?parid=${exaParcelId}`;
         console.log(`[PAO Search] Found parcel ID via Exa: ${exaParcelId}`);
 
-        // Use the legacy extraction for Exa-found URLs (separate browser session)
-        const extractResult = await extractManateePaoPropertyPlaywright(detailUrl, {
-          scope: "full",
-        });
+        // Use extraction for Exa-found URLs (separate browser session)
+        const extractResult = await extractManateePaoPropertyPlaywright(detailUrl);
         scraped = extractResult.scraped;
       }
     }
