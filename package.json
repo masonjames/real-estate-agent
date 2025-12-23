@@ -15,12 +15,19 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.75",
     "@neondatabase/serverless": "^1.0.2",
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-slot": "^1.2.4",
     "better-auth": "^1.4.7",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.41.0",
     "exa-js": "^2.0.12",
+    "lucide-react": "^0.562.0",
     "next": "16.1.1",
+    "next-themes": "^0.4.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "tailwind-merge": "^3.4.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {

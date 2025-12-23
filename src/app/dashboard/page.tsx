@@ -6,8 +6,24 @@ import { useSession } from "@/lib/auth-client";
 import { Header } from "@/components/layout/header";
 import { PropertySearchForm } from "@/components/search/property-search-form";
 import { ResearchResults } from "@/components/search/research-results";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import type { ResearchResult } from "@/lib/agent";
+import {
+  Search,
+  Users,
+  Clock,
+  Lightbulb,
+  MapPin,
+  TrendingUp,
+} from "lucide-react";
 
 interface SavedSearch {
   id: number;
@@ -71,7 +87,7 @@ export default function DashboardPage() {
 
       const data = await response.json();
       setSearchResult(data.result);
-      loadRecentSearches(); // Refresh history
+      loadRecentSearches();
     } catch (error) {
       console.error("Search error:", error);
       alert(error instanceof Error ? error.message : "Search failed");
@@ -85,16 +101,18 @@ export default function DashboardPage() {
   };
 
   const handleSave = () => {
-    // Already saved during search, just show confirmation
     alert("Research saved to your history!");
   };
 
   if (isPending) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent" />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
         </div>
       </div>
     );
@@ -105,14 +123,15 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Header />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-foreground">
             Welcome back, {session.user.name?.split(" ")[0] || "there"}!
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-muted-foreground mt-2">
             Research properties and find potential buyers with AI-powered
             insights.
           </p>
@@ -140,21 +159,34 @@ export default function DashboardPage() {
             {/* Quick Stats */}
             <Card>
               <CardHeader>
-                <CardTitle>Your Stats</CardTitle>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <CardTitle>Your Stats</CardTitle>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-center p-4 bg-primary/10 rounded-xl">
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <Search className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="text-2xl font-bold text-primary">
                       {recentSearches.length}
                     </div>
-                    <div className="text-sm text-gray-600">Searches</div>
+                    <div className="text-xs text-muted-foreground">
+                      Searches
+                    </div>
                   </div>
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">
+                  <div className="text-center p-4 bg-success/10 rounded-xl">
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-success" />
+                    </div>
+                    <div className="text-2xl font-bold text-success">
                       {recentSearches.length * 3}
                     </div>
-                    <div className="text-sm text-gray-600">Leads Found</div>
+                    <div className="text-xs text-muted-foreground">
+                      Leads Found
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -163,40 +195,53 @@ export default function DashboardPage() {
             {/* Recent Searches */}
             <Card>
               <CardHeader>
-                <CardTitle>Recent Searches</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle>Recent Searches</CardTitle>
+                    <CardDescription>
+                      Click to search again
+                    </CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoadingHistory ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="h-12 bg-gray-100 rounded animate-pulse"
-                      />
+                      <Skeleton key={i} className="h-14 w-full rounded-lg" />
                     ))}
                   </div>
                 ) : recentSearches.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {recentSearches.map((search) => (
-                      <div
+                      <button
                         key={search.id}
-                        className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                        className="w-full p-3 bg-muted/50 rounded-lg hover:bg-muted text-left transition-colors group"
                         onClick={() => handleSearch(search.address)}
                       >
-                        <div className="font-medium text-gray-900 text-sm truncate">
-                          {search.address}
+                        <div className="flex items-start gap-3">
+                          <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-foreground text-sm truncate group-hover:text-primary transition-colors">
+                              {search.address}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {search.city}, {search.state} &middot;{" "}
+                              {new Date(search.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {search.city}, {search.state} &bull;{" "}
-                          {new Date(search.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">
-                    No searches yet. Start by entering an address above.
-                  </p>
+                  <div className="text-center py-6">
+                    <Search className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-muted-foreground text-sm">
+                      No searches yet. Start by entering an address above.
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -204,21 +249,36 @@ export default function DashboardPage() {
             {/* Tips */}
             <Card>
               <CardHeader>
-                <CardTitle>Pro Tips</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5 text-accent" />
+                  <CardTitle>Pro Tips</CardTitle>
+                </div>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-3 text-sm text-gray-600">
-                  <li className="flex items-start">
-                    <span className="text-blue-500 mr-2">•</span>
-                    Include ZIP code for more accurate results
+                <ul className="space-y-3">
+                  <li className="flex items-start gap-3">
+                    <Badge variant="accent" className="mt-0.5 shrink-0">
+                      1
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Include ZIP code for more accurate results
+                    </span>
                   </li>
-                  <li className="flex items-start">
-                    <span className="text-blue-500 mr-2">•</span>
-                    Best results for Manatee County, FL properties
+                  <li className="flex items-start gap-3">
+                    <Badge variant="accent" className="mt-0.5 shrink-0">
+                      2
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Best results for Manatee County, FL properties
+                    </span>
                   </li>
-                  <li className="flex items-start">
-                    <span className="text-blue-500 mr-2">•</span>
-                    Save searches to build your lead database
+                  <li className="flex items-start gap-3">
+                    <Badge variant="accent" className="mt-0.5 shrink-0">
+                      3
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Save searches to build your lead database
+                    </span>
                   </li>
                 </ul>
               </CardContent>

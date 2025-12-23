@@ -12,8 +12,12 @@ export interface PersonSearchResult {
   company?: string;
   location?: string;
   linkedinUrl?: string;
+  email?: string;
   summary?: string;
   highlights?: string[];
+  imageUrl?: string | null;
+  matchScore?: number;
+  matchCriteria?: string[];
 }
 
 export interface DemographicInsights {
@@ -26,6 +30,107 @@ export interface DemographicInsights {
 }
 
 /**
+ * Generate match criteria based on property and buyer characteristics
+ */
+function generateMatchCriteria(
+  buyer: Partial<PersonSearchResult>,
+  propertyContext: {
+    location?: string;
+    propertyType?: string;
+    priceRange?: string;
+  }
+): string[] {
+  const criteria: string[] = [];
+
+  // Location-based matching
+  if (buyer.location && propertyContext.location) {
+    const buyerLocation = buyer.location.toLowerCase();
+    const propLocation = propertyContext.location.toLowerCase();
+    if (
+      buyerLocation.includes(propLocation) ||
+      propLocation.includes(buyerLocation)
+    ) {
+      criteria.push("Location Match");
+    }
+  }
+
+  // Industry/profession matching
+  if (buyer.title || buyer.company) {
+    const titleLower = (buyer.title || "").toLowerCase();
+    const companyLower = (buyer.company || "").toLowerCase();
+
+    if (
+      titleLower.includes("investor") ||
+      titleLower.includes("real estate") ||
+      companyLower.includes("capital") ||
+      companyLower.includes("investment")
+    ) {
+      criteria.push("Real Estate Investor");
+    }
+    if (
+      titleLower.includes("ceo") ||
+      titleLower.includes("founder") ||
+      titleLower.includes("executive") ||
+      titleLower.includes("director")
+    ) {
+      criteria.push("Executive/High Income");
+    }
+    if (
+      titleLower.includes("tech") ||
+      titleLower.includes("engineer") ||
+      titleLower.includes("developer") ||
+      companyLower.includes("tech")
+    ) {
+      criteria.push("Tech Professional");
+    }
+  }
+
+  // Property type matching
+  if (propertyContext.propertyType) {
+    const propType = propertyContext.propertyType.toLowerCase();
+    if (propType.includes("luxury") || propType.includes("estate")) {
+      criteria.push("Luxury Buyer");
+    }
+    if (propType.includes("family") || propType.includes("single")) {
+      criteria.push("Family Home Buyer");
+    }
+    if (propType.includes("condo") || propType.includes("apartment")) {
+      criteria.push("Urban Lifestyle");
+    }
+  }
+
+  // If no specific criteria found, add generic ones
+  if (criteria.length === 0) {
+    criteria.push("Active Market Interest");
+  }
+
+  return criteria;
+}
+
+/**
+ * Calculate match score based on criteria and other factors
+ */
+function calculateMatchScore(
+  buyer: Partial<PersonSearchResult>,
+  criteriaCount: number
+): number {
+  let score = 50; // Base score
+
+  // More criteria = higher score
+  score += criteriaCount * 10;
+
+  // Has profile info = higher score
+  if (buyer.title) score += 5;
+  if (buyer.company) score += 5;
+  if (buyer.location) score += 5;
+  if (buyer.linkedinUrl) score += 5;
+  if (buyer.summary) score += 5;
+
+  // Cap at 100
+  return Math.min(100, Math.max(0, score));
+}
+
+/**
  * Search for potential buyers based on property characteristics and location
  */
 export async function searchPotentialBuyers(
@@ -35,7 +140,7 @@ export async function searchPotentialBuyers(
 ): Promise<PersonSearchResult[]> {
   try {
     const query = `real estate investor OR home buyer ${location} ${propertyType}`;
-    
+
     const response = await exa.search(query, {
       type: "auto",
       category: "people",
@@ -43,11 +148,26 @@ export async function searchPotentialBuyers(
       useAutoprompt: true,
     });
 
-    return response.results.map((result) => ({
-      name: result.title || "Unknown",
-      linkedinUrl: result.url,
-      summary: result.text || undefined,
-    }));
+    const propertyContext = { location, propertyType, priceRange };
+
+    return response.results.map((result) => {
+      const buyer: Partial<PersonSearchResult> = {
+        name: result.title || "Unknown",
+        linkedinUrl: result.url,
+        summary: result.text || undefined,
+      };
+
+      const matchCriteria = generateMatchCriteria(buyer, propertyContext);
+      const matchScore = calculateMatchScore(buyer, matchCriteria.length);
+
+      return {
+        ...buyer,
+        name: buyer.name || "Unknown",
+        matchCriteria,
+        matchScore,
+        imageUrl: null, // Exa doesn't return images directly
+      };
+    });
   } catch (error) {
     console.error("Error searching for potential buyers:", error);
     return [];
@@ -64,7 +184,7 @@ export async function getDemographicInsights(
   try {
     // Search for demographic and economic information about the area
     const demographicQuery = `${location} ${zipCode || ""} demographics income population statistics`;
-    
+
     const response = await exa.searchAndContents(demographicQuery, {
       type: "auto",
       numResults: 5,
@@ -102,15 +222,13 @@ export async function getDemographicInsights(
 /**
  * Research potential buyer personas for a property
  */
-export async function researchBuyerPersonas(
-  propertyDetails: {
-    address: string;
-    price?: number;
-    bedrooms?: number;
-    sqft?: number;
-    propertyType?: string;
-  }
-): Promise<{
+export async function researchBuyerPersonas(propertyDetails: {
+  address: string;
+  price?: number;
+  bedrooms?: number;
+  sqft?: number;
+  propertyType?: string;
+}): Promise<{
   personas: string[];
   targetAudience: string;
   marketingInsights: string[];
@@ -143,9 +261,12 @@ export async function researchBuyerPersonas(
           "millennial",
           "empty nester",
         ];
-        
+
         for (const type of buyerTypes) {
-          if (result.text.toLowerCase().includes(type) && !personas.includes(type)) {
+          if (
+            result.text.toLowerCase().includes(type) &&
+            !personas.includes(type)
+          ) {
             personas.push(type);
           }
         }

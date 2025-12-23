@@ -1,62 +1,72 @@
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
+import { Button } from "@/components/ui/button";
+import {
+  Search,
+  Users,
+  Shield,
+  ArrowRight,
+  Home,
+  Sparkles,
+} from "lucide-react";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+    <div className="min-h-screen bg-background">
       <Header />
 
       <main>
         {/* Hero Section */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="text-center">
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">
-              Find the Perfect Buyers for
-              <span className="text-blue-600"> Any Property</span>
-            </h1>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-10">
-              AI-powered demographic research that matches properties with
-              potential buyers. Get instant insights on buyer personas, market
-              demographics, and targeted leads.
-            </p>
-            <div className="flex justify-center gap-4">
-              <Link
-                href="/auth"
-                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Get Started Free
-                <svg
-                  className="ml-2 w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 7l5 5m0 0l-5 5m5-5H6"
-                  />
-                </svg>
-              </Link>
-              <Link
-                href="#features"
-                className="inline-flex items-center px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Learn More
-              </Link>
+        <section className="relative overflow-hidden">
+          {/* Background gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
+            <div className="text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8">
+                <Sparkles className="w-4 h-4" />
+                AI-Powered Real Estate Research
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
+                Find the Perfect Buyers for
+                <span className="text-primary"> Any Property</span>
+              </h1>
+              <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10 leading-relaxed">
+                AI-powered demographic research that matches properties with
+                potential buyers. Get instant insights on buyer personas, market
+                demographics, and targeted leads.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <Link href="/auth">
+                  <Button size="lg" className="gap-2 w-full sm:w-auto">
+                    Get Started Free
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Link href="#features">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    Learn More
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Features Section */}
-        <section id="features" className="bg-white py-20">
+        <section id="features" className="py-24 bg-muted/30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
                 Powerful Research Tools
               </h2>
-              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Everything you need to understand your property market and find
                 qualified buyers.
               </p>
@@ -64,59 +74,17 @@ export default function HomePage() {
 
             <div className="grid md:grid-cols-3 gap-8">
               <FeatureCard
-                icon={
-                  <svg
-                    className="w-8 h-8"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                }
+                icon={<Search className="w-6 h-6" />}
                 title="Property Research"
                 description="Instantly pull property data from county records, including valuations, taxes, and property details."
               />
               <FeatureCard
-                icon={
-                  <svg
-                    className="w-8 h-8"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                    />
-                  </svg>
-                }
+                icon={<Users className="w-6 h-6" />}
                 title="Demographic Insights"
                 description="Understand who lives in the area - income levels, occupations, lifestyle indicators, and more."
               />
               <FeatureCard
-                icon={
-                  <svg
-                    className="w-8 h-8"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                    />
-                  </svg>
-                }
+                icon={<Shield className="w-6 h-6" />}
                 title="Buyer Matching"
                 description="AI identifies ideal buyer personas and finds real potential buyers interested in similar properties."
               />
@@ -125,12 +93,15 @@ export default function HomePage() {
         </section>
 
         {/* How It Works */}
-        <section className="py-20">
+        <section className="py-24">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
                 How It Works
               </h2>
+              <p className="text-lg text-muted-foreground">
+                Four simple steps to find your ideal buyers
+              </p>
             </div>
 
             <div className="grid md:grid-cols-4 gap-8">
@@ -159,46 +130,42 @@ export default function HomePage() {
         </section>
 
         {/* CTA Section */}
-        <section className="bg-blue-600 py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">
+        <section className="py-24 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-90" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">
               Ready to Find Your Buyers?
             </h2>
-            <p className="text-blue-100 text-lg mb-8 max-w-2xl mx-auto">
+            <p className="text-primary-foreground/80 text-lg mb-8 max-w-2xl mx-auto">
               Start researching properties and connecting with qualified buyers
               today. No credit card required.
             </p>
-            <Link
-              href="/auth"
-              className="inline-flex items-center px-8 py-4 bg-white text-blue-600 font-medium rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              Start Free Research
+            <Link href="/auth">
+              <Button
+                size="lg"
+                variant="secondary"
+                className="bg-white text-primary hover:bg-white/90"
+              >
+                Start Free Research
+              </Button>
             </Link>
           </div>
         </section>
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12">
+      <footer className="bg-card border-t border-border py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center mb-4 md:mb-0">
-              <svg
-                className="w-8 h-8 text-blue-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                />
-              </svg>
-              <span className="ml-2 text-white font-bold">PropertyMatch</span>
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Home className="w-5 h-5 text-primary" />
+              </div>
+              <span className="ml-2 text-foreground font-bold">
+                PropertyMatch
+              </span>
             </div>
-            <p className="text-sm">
+            <p className="text-sm text-muted-foreground">
               &copy; {new Date().getFullYear()} PropertyMatch. All rights
               reserved.
             </p>
@@ -219,12 +186,12 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="p-6 bg-gray-50 rounded-xl">
-      <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center mb-4">
+    <div className="p-8 bg-card rounded-2xl border border-border hover:border-primary/20 hover:shadow-lg transition-all duration-300">
+      <div className="w-14 h-14 bg-primary/10 text-primary rounded-xl flex items-center justify-center mb-6">
         {icon}
       </div>
-      <h3 className="text-xl font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
+      <h3 className="text-xl font-semibold text-foreground mb-3">{title}</h3>
+      <p className="text-muted-foreground leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -239,12 +206,14 @@ function StepCard({
   description: string;
 }) {
   return (
-    <div className="text-center">
-      <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+    <div className="text-center group">
+      <div className="w-14 h-14 bg-primary text-primary-foreground rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold group-hover:scale-110 transition-transform">
         {number}
       </div>
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600 text-sm">{description}</p>
+      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-muted-foreground text-sm leading-relaxed">
+        {description}
+      </p>
     </div>
   );
 }
