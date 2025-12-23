@@ -7,15 +7,21 @@
  */
 
 import {
+  extractManateePaoPropertyPlaywright,
+  scrapeManateePaoPropertyByAddressPlaywright,
+} from "./pao/manatee-pao.playwright";
+import { PlaywrightError } from "./playwright/browser";
+import { exa } from "./exa";
+
+// DEPRECATED: Firecrawl imports kept for legacy function compatibility
+// These functions are no longer used in the main search flow (now using Playwright)
+// TODO: Remove these imports and legacy functions in a future cleanup
+import {
   scrapeUrl,
   extractFromUrl,
-  isFirecrawlConfigured,
   buildSearchActions,
   buildManateePaoSearchActions,
-  buildFormFillActions,
-  type FirecrawlAction,
 } from "./firecrawl";
-import { exa } from "./exa";
 
 // Value breakdown for assessments (land, building, extras, total)
 export interface ValueBreakdown {
@@ -57,6 +63,15 @@ export interface ExtraFeatureRecord {
   value?: number;
 }
 
+// Inspection record from PAO
+export interface InspectionRecord {
+  date?: string;
+  inspector?: string;
+  type?: string;
+  result?: string;
+  notes?: string;
+}
+
 // Basic property identification info
 export interface PropertyBasicInfo {
   accountNumber?: string;
@@ -74,6 +89,8 @@ export interface PropertyBasicInfo {
   shortDescription?: string;
   homesteadExemption?: boolean;
   femaValue?: number;
+  ownerType?: string;      // e.g., "TRUSTEE", "INDIVIDUAL", "CORPORATION"
+  livingUnits?: number;    // Number of living units on property
 }
 
 // Building/structure details
@@ -180,6 +197,7 @@ export interface PropertyListing {
 export interface PropertyExtras {
   features?: string[];         // MLS-style feature chips
   paoExtraFeatures?: ExtraFeatureRecord[];
+  inspections?: InspectionRecord[];
 }
 
 export interface PropertyDetails {
@@ -228,8 +246,10 @@ export interface PropertySearchResult {
   source: "manatee_pao" | "zillow" | "realtor" | "manual";
 }
 
-// Schema for Firecrawl LLM extraction from property detail pages
-// Comprehensive schema to extract all PAO data sections
+// DEPRECATED: Schema for Firecrawl LLM extraction (legacy code)
+// The Playwright implementation uses Cheerio for deterministic HTML parsing.
+// See src/lib/pao/manatee-pao.playwright.ts for the new implementation.
+// TODO: Remove this schema and related legacy functions in a future cleanup
 const PROPERTY_EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -578,8 +598,13 @@ type ExtractedPropertyData = {
 };
 
 /**
- * Search Manatee County Property Appraiser's Office using Firecrawl
- * Returns errors with descriptive messages instead of mock data
+ * Search Manatee County Property Appraiser's Office using Playwright
+ *
+ * Uses the single-session orchestrator to efficiently:
+ * 1. Search for the property by address
+ * 2. Extract ALL data (iframe + main page JavaScript sections) in one browser session
+ *
+ * Falls back to Exa AI for parcel ID lookup if direct search fails.
  */
 export async function searchManateePAO(
   address: string
@@ -595,37 +620,43 @@ export async function searchManateePAO(
   }
 
   const cleanAddress = address.trim();
-  console.log(`[PAO Search] Starting search for: "${cleanAddress}"`);
-
-  // Check if Firecrawl is configured
-  if (!isFirecrawlConfigured()) {
-    console.error("[PAO Search] Firecrawl API key is not configured");
-    return {
-      success: false,
-      error: "Property search service is not configured. Please contact support to enable property lookups.",
-      source: "manatee_pao",
-    };
-  }
+  console.log(`[PAO Search] Starting Playwright-based search for: "${cleanAddress}"`);
 
   try {
-    // Step 1: Search for the property and find detail URL
-    const { detailUrl, debug } = await findManateePaoDetailUrlByAddress(cleanAddress);
+    // Use the single-session orchestrator for complete data extraction
+    // This extracts BOTH iframe data AND main page JS sections (valuations, sales, features, inspections)
+    const scrapeResult = await scrapeManateePaoPropertyByAddressPlaywright(cleanAddress, {
+      scope: "full", // Extract everything: iframe + main page sections
+    });
+
+    let { detailUrl, scraped } = scrapeResult;
+    const { debug } = scrapeResult;
+
+    // If orchestrator didn't find the property, try Exa AI fallback for parcel ID
+    if (!detailUrl) {
+      console.log("[PAO Search] Orchestrator search returned no results, trying Exa AI fallback...");
+      const exaParcelId = await findParcelIdViaExa(cleanAddress);
+      if (exaParcelId) {
+        detailUrl = `https://www.manateepao.gov/parcel/?parid=${exaParcelId}`;
+        console.log(`[PAO Search] Found parcel ID via Exa: ${exaParcelId}`);
+
+        // Use the legacy extraction for Exa-found URLs (separate browser session)
+        const extractResult = await extractManateePaoPropertyPlaywright(detailUrl, {
+          scope: "full",
+        });
+        scraped = extractResult.scraped;
+      }
+    }
 
     if (!detailUrl) {
       console.log("[PAO Search] No matching property found for this address");
       console.log("[PAO Search] Debug info:", debug);
 
-      // Provide a helpful error message
       let errorMessage = `Property not found at "${cleanAddress}". `;
-
-      if (debug?.addressFound === false) {
-        errorMessage += "The address was not found in Manatee County Property Appraiser records. ";
-        errorMessage += "Please verify: (1) The address is in Manatee County, FL, ";
-        errorMessage += "(2) The street name and number are correct, ";
-        errorMessage += "(3) The property is not a new construction pending registration.";
-      } else {
-        errorMessage += "Unable to retrieve property details. Please check the address format and try again.";
-      }
+      errorMessage += "The address was not found in Manatee County Property Appraiser records. ";
+      errorMessage += "Please verify: (1) The address is in Manatee County, FL, ";
+      errorMessage += "(2) The street name and number are correct, ";
+      errorMessage += "(3) The property is not a new construction pending registration.";
 
       return {
         success: false,
@@ -634,15 +665,10 @@ export async function searchManateePAO(
       };
     }
 
-    console.log(`[PAO Search] Found property detail URL: ${detailUrl}`);
-
-    // Step 2: Extract property details from the detail page
-    const { scraped, debug: extractDebug } = await extractManateePaoProperty(detailUrl);
-
     // Verify we got meaningful data
     if (!scraped || (!scraped.parcelId && !scraped.owner && !scraped.address)) {
       console.error("[PAO Search] Failed to extract meaningful property data");
-      console.error("[PAO Search] Extract debug:", extractDebug);
+      console.error("[PAO Search] Debug info:", debug);
       return {
         success: false,
         error: `Could not extract property details from ${detailUrl}. The property page may have an unexpected format or the service may be temporarily unavailable.`,
@@ -650,8 +676,7 @@ export async function searchManateePAO(
       };
     }
 
-    // Step 3: Validate that extracted address matches searched address
-    // This prevents LLM hallucination of fake data when page has no property info
+    // Validate that extracted address matches searched address
     const extractedAddress = (scraped.address || "").toLowerCase();
     const searchedParts = parseAddress(cleanAddress);
     const searchedStreetNumber = (searchedParts.street || "").split(/\s+/)[0];
@@ -665,7 +690,6 @@ export async function searchManateePAO(
 
     if (!addressMatches && extractedAddress && extractedAddress !== cleanAddress.toLowerCase()) {
       console.error(`[PAO Search] Address mismatch! Searched for "${cleanAddress}" but extracted "${scraped.address}"`);
-      console.error("[PAO Search] This may indicate LLM hallucination from a page without property data");
       return {
         success: false,
         error: `Address verification failed. Searched for "${cleanAddress}" but the property page returned data for "${scraped.address}". Please verify the address and try again.`,
@@ -673,8 +697,16 @@ export async function searchManateePAO(
       };
     }
 
-    // Step 4: Normalize and validate the extracted data
+    // Normalize and validate the extracted data
     const property = normalizePropertyDetails(cleanAddress, scraped, { detailUrl });
+
+    console.log(`[PAO Search] Successfully extracted property data:`, {
+      parcelId: property.parcelId,
+      valuations: property.valuations?.length || 0,
+      salesHistory: property.salesHistory?.length || 0,
+      extraFeatures: property.extras?.paoExtraFeatures?.length || 0,
+      inspections: property.extras?.inspections?.length || 0,
+    });
 
     return {
       success: true,
@@ -683,6 +715,31 @@ export async function searchManateePAO(
     };
   } catch (error) {
     console.error("[PAO Search] Error during property search:", error);
+
+    // Handle Playwright-specific errors
+    if (error instanceof PlaywrightError) {
+      if (error.code === "BLOCKED") {
+        return {
+          success: false,
+          error: "The property search service detected automated access. Please try again later or contact support.",
+          source: "manatee_pao",
+        };
+      }
+      if (error.code === "TIMEOUT") {
+        return {
+          success: false,
+          error: "Property search timed out. The Manatee County website may be slow. Please try again.",
+          source: "manatee_pao",
+        };
+      }
+      if (error.code === "BROWSER_LAUNCH_FAILED") {
+        return {
+          success: false,
+          error: "Property search service is temporarily unavailable. Please try again later.",
+          source: "manatee_pao",
+        };
+      }
+    }
 
     // Detect rate limiting
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1605,7 +1662,7 @@ function normalizePropertyDetails(
     // Raw data for debugging
     rawData: {
       source: "manatee_pao",
-      method: "firecrawl",
+      method: "playwright",
       detailUrl: context?.detailUrl,
       scrapedAt: new Date().toISOString(),
       isFallback: false,

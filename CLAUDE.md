@@ -35,31 +35,77 @@ AI-powered real estate research application that searches property records and p
 ### Components
 - `src/components/search/` - Property search form and results display
 
-## Current Status (WIP)
+## Current Status
 
-### Known Issue: PAO Search Not Returning Results
-The Manatee County PAO search form at `manateepao.gov/search/` is complex:
-- Dynamic JavaScript-generated form
-- Multiple search strategies implemented (Firecrawl form fill, Exa AI fallback)
-- Form fields discovered via browser inspection: `#OwnLast`, `#OwnFirst`, `#ParcelId`, `#Address`, `#Zip`
-- Submit button: `input[type="submit"].btn-success`
+### Playwright-based PAO Search (December 2024)
+The property search now uses **Playwright** instead of Firecrawl for more reliable browser automation:
 
-### Recent Fixes (not yet working)
-1. **URL validation** - Only accepts URLs with parcel ID parameters (e.g., `parid=1234567890`)
-2. **Address validation** - Prevents LLM hallucination by verifying extracted address matches search
-3. **Correct form selectors** - Updated to use actual DOM element IDs from browser inspection
+**Architecture:**
+- `src/lib/playwright/browser.ts` - Browser lifecycle manager (supports local Chromium for Docker/VPS)
+- `src/lib/pao/manatee-pao.playwright.ts` - PAO-specific form filling and data extraction
+- `src/lib/property-search.ts` - Orchestrates search with Exa AI fallback
 
-### Potential Next Steps
-1. Try direct API approach if PAO has a backend endpoint
-2. Consider using Playwright directly for more reliable browser automation
-3. Alternative data sources (Zillow API, public records APIs)
+**Key Features:**
+- Deterministic HTML parsing with Cheerio (no LLM hallucination)
+- Proper "no results" detection
+- Address validation to prevent wrong property data
+- Bot/CAPTCHA detection with clear error messages
+- Configurable timeouts via environment variables
+
+**PAO Detail Page Structure (discovered December 2024):**
+The PAO detail page has a complex structure:
+
+- **Owner Info**: Located in `.owner-content` on the MAIN PAGE (NOT in the iframe!)
+  - The iframe (`skelOwnerContentIFrame`) is just a CSS skeleton placeholder
+  - Owner data extracted via DOM-based Cheerio parsing
+
+- **Two Tab Groups** (Bootstrap tabs):
+  1. **Sales Card** (left): Sales (default) | Exemptions | Businesses | Addresses | Inspections
+  2. **Values Card** (right): Values (default) | Land | Buildings | Features | Permits
+
+- **Default Visible Tables**:
+  - `#tableSales` - Sales history (visible by default)
+  - `#tableValue` - Property valuations (visible by default)
+
+- **Tab-Based Content** (requires clicking):
+  - Inspections tab: `a[href="#inspections"]` in Sales card
+  - Features tab: `a[href="#features"]` in Values card
+  - Bootstrap tabs use `aria-controls` attribute to link to pane IDs
+
+**Known Issues (WIP):**
+- Iframe content extraction times out (skeleton placeholder, not real data)
+- Inspections and Features tab panes not found after clicking tabs
+- Tab pane IDs may differ from tab href (need to resolve via `aria-controls`)
+
+**Form Fields (manateepao.gov/search/):**
+- `#OwnLast`, `#OwnFirst` - Owner name fields (filled with wildcards `*`)
+- `#ParcelId` - Parcel ID field (wildcard for address search)
+- `#Address` - Main search field with typeahead
+- `#Zip` - Optional zip code filter
+- Submit: `input[type="submit"].btn-success`
+
+### Setup for Docker/VPS Deployment
+```bash
+# Install dependencies
+npm install
+
+# Install Chromium browser for Playwright
+npx playwright install chromium
+
+# Run the app
+npm run dev
+```
 
 ## Environment Variables Required
 ```
-FIRECRAWL_API_KEY=
-EXA_API_KEY=
 DATABASE_URL=
 BETTER_AUTH_SECRET=
+EXA_API_KEY=
+
+# Playwright (optional - leave empty for local Chromium)
+PLAYWRIGHT_WS_ENDPOINT=
+PAO_SCRAPE_TIMEOUT_MS=60000
+PAO_NAV_TIMEOUT_MS=45000
 ```
 
 ## Commands

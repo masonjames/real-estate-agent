@@ -4,6 +4,12 @@ import { headers } from "next/headers";
 import { db, propertySearches } from "@/db";
 import { runPropertyResearchAgent } from "@/lib/agent";
 
+// Force Node.js runtime for Playwright compatibility
+export const runtime = "nodejs";
+
+// Increase timeout for Playwright operations (60 seconds)
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     // Verify authentication

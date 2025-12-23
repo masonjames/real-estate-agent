@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Externalize Playwright to prevent bundling issues
+  serverExternalPackages: ["playwright-core"],
 };
 
 export default nextConfig;
