@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+.next
+out
+dist
+build
+.turbo
+
+# Development
+.env*
+!.env.example
+*.log
+npm-debug.log*
+
+# Testing
+coverage
+test-results
+
+# IDE
+.idea
+.vscode
+
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.docker
+
+# Claude Code
+.claude
+
+# Misc
+.DS_Store
+*.pem
+*.tmp
