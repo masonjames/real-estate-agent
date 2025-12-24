@@ -33,6 +33,12 @@ COPY . .
 # Set Next.js to standalone mode
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Provide dummy environment variables for build-time
+# These are required because Neon and Better Auth initialize at module load time
+# Real values are injected at runtime via Dokploy
+ENV DATABASE_URL="postgresql://placeholder:placeholder@placeholder/placeholder?sslmode=require"
+ENV BETTER_AUTH_SECRET="build-time-placeholder-will-be-replaced-at-runtime"
+
 RUN npm run build
 
 # Production stage
