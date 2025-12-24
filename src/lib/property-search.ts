@@ -11,7 +11,7 @@ import {
   scrapeManateePaoPropertyByAddressPlaywright,
 } from "./pao/manatee-pao.playwright";
 import { PlaywrightError } from "./playwright/browser";
-import { exa } from "./exa";
+import { getExaClient } from "./exa";
 import { normalizeAddressForPao } from "./address/normalize";
 
 // DEPRECATED: Firecrawl imports kept for legacy function compatibility
@@ -899,7 +899,7 @@ async function findParcelIdViaExa(address: string): Promise<string | null> {
     const query = `site:manateepao.gov ${address} parcel`;
     console.log(`[Exa Search] Searching for: ${query}`);
 
-    const response = await exa.searchAndContents(query, {
+    const response = await getExaClient().searchAndContents(query, {
       type: "auto",
       numResults: 5,
       text: { maxCharacters: 3000 },

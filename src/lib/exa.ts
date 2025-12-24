@@ -1,9 +1,9 @@
 import Exa from "exa-js";
 
-// Lazy initialization to avoid build-time errors
+// Lazy initialization to avoid build-time errors when EXA_API_KEY is not set
 let _exa: Exa | null = null;
 
-function getExaClient(): Exa {
+export function getExaClient(): Exa {
   if (!_exa) {
     if (!process.env.EXA_API_KEY) {
       throw new Error("EXA_API_KEY environment variable is not set");
@@ -12,12 +12,6 @@ function getExaClient(): Exa {
   }
   return _exa;
 }
-
-// Export a proxy that lazily initializes the client
-export const exa = {
-  search: (...args: Parameters<Exa["search"]>) => getExaClient().search(...args),
-  searchAndContents: (...args: Parameters<Exa["searchAndContents"]>) => getExaClient().searchAndContents(...args),
-};
 
 export interface PersonSearchResult {
   name: string;
@@ -154,7 +148,7 @@ export async function searchPotentialBuyers(
   try {
     const query = `real estate investor OR home buyer ${location} ${propertyType}`;
 
-    const response = await exa.search(query, {
+    const response = await getExaClient().search(query, {
       type: "auto",
       category: "people",
       numResults: 10,
@@ -198,7 +192,7 @@ export async function getDemographicInsights(
     // Search for demographic and economic information about the area
     const demographicQuery = `${location} ${zipCode || ""} demographics income population statistics`;
 
-    const response = await exa.searchAndContents(demographicQuery, {
+    const response = await getExaClient().searchAndContents(demographicQuery, {
       type: "auto",
       numResults: 5,
       text: { maxCharacters: 2000 },
@@ -251,7 +245,7 @@ export async function researchBuyerPersonas(propertyDetails: {
       propertyDetails.price ? `$${propertyDetails.price}` : ""
     } buyer demographics`;
 
-    const response = await exa.searchAndContents(query, {
+    const response = await getExaClient().searchAndContents(query, {
       type: "auto",
       numResults: 5,
       text: { maxCharacters: 1500 },
