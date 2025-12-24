@@ -1,10 +1,23 @@
 import Exa from "exa-js";
 
-if (!process.env.EXA_API_KEY) {
-  console.warn("EXA_API_KEY is not set. Exa features will not work.");
+// Lazy initialization to avoid build-time errors
+let _exa: Exa | null = null;
+
+function getExaClient(): Exa {
+  if (!_exa) {
+    if (!process.env.EXA_API_KEY) {
+      throw new Error("EXA_API_KEY environment variable is not set");
+    }
+    _exa = new Exa(process.env.EXA_API_KEY);
+  }
+  return _exa;
 }
 
-export const exa = new Exa(process.env.EXA_API_KEY);
+// Export a proxy that lazily initializes the client
+export const exa = {
+  search: (...args: Parameters<Exa["search"]>) => getExaClient().search(...args),
+  searchAndContents: (...args: Parameters<Exa["searchAndContents"]>) => getExaClient().searchAndContents(...args),
+};
 
 export interface PersonSearchResult {
   name: string;
