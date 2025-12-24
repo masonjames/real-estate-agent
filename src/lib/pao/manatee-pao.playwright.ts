@@ -13,6 +13,7 @@
 import "server-only";
 import * as cheerio from "cheerio";
 import { withPage, PlaywrightError, detectBlocking } from "@/lib/playwright/browser";
+import { normalizeStreetForUsps } from "@/lib/address/normalize";
 import type { Page, Frame } from "playwright-core";
 import type {
   PropertyDetails,
@@ -1430,6 +1431,7 @@ export async function scrapeManateePaoPropertyByAddressPlaywright(
 
 /**
  * Fill the PAO search form with address data
+ * Normalizes street address to USPS abbreviations for reliable search
  */
 async function fillSearchForm(page: Page, address: AddressParts): Promise<void> {
   // Clear and fill owner fields with wildcards
@@ -1438,8 +1440,13 @@ async function fillSearchForm(page: Page, address: AddressParts): Promise<void> 
   await clearAndFill(page, SELECTORS.parcelId, "*");
 
   // Fill address (the main search field)
+  // Normalize street to USPS abbreviations (defense-in-depth, should already be normalized)
   if (address.street) {
-    await clearAndFill(page, SELECTORS.address, address.street);
+    const normalizedStreet = normalizeStreetForUsps(address.street);
+    if (normalizedStreet !== address.street) {
+      console.log(`[PAO Playwright] Street normalized: "${address.street}" → "${normalizedStreet}"`);
+    }
+    await clearAndFill(page, SELECTORS.address, normalizedStreet);
     // Wait for typeahead to settle
     await page.waitForTimeout(500);
     // Press Escape to close any typeahead dropdown

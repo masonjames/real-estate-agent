@@ -12,6 +12,7 @@ import {
 } from "./pao/manatee-pao.playwright";
 import { PlaywrightError } from "./playwright/browser";
 import { exa } from "./exa";
+import { normalizeAddressForPao } from "./address/normalize";
 
 // DEPRECATED: Firecrawl imports kept for legacy function compatibility
 // These functions are no longer used in the main search flow (now using Playwright)
@@ -620,12 +621,24 @@ export async function searchManateePAO(
   }
 
   const cleanAddress = address.trim();
-  console.log(`[PAO Search] Starting Playwright-based search for: "${cleanAddress}"`);
+
+  // Normalize the address to USPS standard abbreviations
+  // This fixes common issues like "Terrace" → "Ter", "Boulevard" → "Blvd"
+  const normalized = normalizeAddressForPao(cleanAddress);
+  const searchAddress = normalized.normalizedFull;
+
+  if (normalized.wasNormalized) {
+    console.log(`[PAO Search] Address normalized: "${cleanAddress}" → "${searchAddress}"`);
+    console.log(`[PAO Search] Normalizations applied: ${normalized.normalizations.join(", ")}`);
+  }
+
+  console.log(`[PAO Search] Starting Playwright-based search for: "${searchAddress}"`);
 
   try {
     // Use the single-session orchestrator for complete data extraction
     // Extracts owner info + main page tabs (Sales, Values, Buildings, Features, Inspections)
-    const scrapeResult = await scrapeManateePaoPropertyByAddressPlaywright(cleanAddress);
+    // Use the normalized address for PAO search
+    const scrapeResult = await scrapeManateePaoPropertyByAddressPlaywright(searchAddress);
 
     let { detailUrl, scraped } = scrapeResult;
     const { debug } = scrapeResult;
@@ -633,7 +646,8 @@ export async function searchManateePAO(
     // If orchestrator didn't find the property, try Exa AI fallback for parcel ID
     if (!detailUrl) {
       console.log("[PAO Search] Orchestrator search returned no results, trying Exa AI fallback...");
-      const exaParcelId = await findParcelIdViaExa(cleanAddress);
+      // Use normalized address for Exa search as well
+      const exaParcelId = await findParcelIdViaExa(searchAddress);
       if (exaParcelId) {
         detailUrl = `https://www.manateepao.gov/parcel/?parid=${exaParcelId}`;
         console.log(`[PAO Search] Found parcel ID via Exa: ${exaParcelId}`);
@@ -648,6 +662,7 @@ export async function searchManateePAO(
       console.log("[PAO Search] No matching property found for this address");
       console.log("[PAO Search] Debug info:", debug);
 
+      // Use original address in user-facing error message
       let errorMessage = `Property not found at "${cleanAddress}". `;
       errorMessage += "The address was not found in Manatee County Property Appraiser records. ";
       errorMessage += "Please verify: (1) The address is in Manatee County, FL, ";
@@ -673,8 +688,9 @@ export async function searchManateePAO(
     }
 
     // Validate that extracted address matches searched address
+    // Use normalized address for comparison since PAO returns USPS-formatted addresses
     const extractedAddress = (scraped.address || "").toLowerCase();
-    const searchedParts = parseAddress(cleanAddress);
+    const searchedParts = parseAddress(searchAddress);
     const searchedStreetNumber = (searchedParts.street || "").split(/\s+/)[0];
     const searchedStreetName = (searchedParts.street || "").split(/\s+/).slice(1).join(" ").toLowerCase();
 
