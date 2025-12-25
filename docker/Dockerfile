@@ -48,6 +48,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Bind to 0.0.0.0 instead of container hostname for proper networking
+ENV HOSTNAME=0.0.0.0
 
 # Install Playwright dependencies and Chromium
 # Required for browser automation (PAO property search)
